@@ -46,10 +46,10 @@ class Application(object):
 application = Application()
 
 def serve(app=application, host='127.0.0.1', port=8080):
-    #try:
-    #    import waitress
-    #    waitress.serve(app, host=host, port=port)
-    #except:
+    try:
+        import waitress
+        waitress.serve(app, host=host, port=port)
+    except:
         from wsgiref.simple_server import make_server
         server = make_server(host, port, app)
         server.serve_forever()
