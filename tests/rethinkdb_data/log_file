@@ -1,0 +1,10 @@
+2015-03-28T14:43:26.681616000 0.004870s notice: Recursively removing directory /Users/brianjpetersen/Desktop/classy/tests/rethinkdb_data/tmp
+2015-03-28T14:43:26.683532000 0.006790s notice: Initializing directory /Users/brianjpetersen/Desktop/classy/tests/rethinkdb_data
+2015-03-28T14:43:26.683663000 0.006916s info: Creating a default database for your convenience. (This is because you ran 'rethinkdb' without 'create', 'serve', or '--join', and the directory '/Users/brianjpetersen/Desktop/classy/tests/rethinkdb_data' did not already exist or is empty.)
+2015-03-28T14:43:26.683699000 0.006951s notice: Running rethinkdb 1.16.2-1 (CLANG 4.2 (clang-425.0.28))...
+2015-03-28T14:43:26.688723000 0.011978s notice: Running on Darwin 14.1.0 x86_64
+2015-03-28T14:43:26.688789000 0.012041s notice: Loading data from directory /Users/brianjpetersen/Desktop/classy/tests/rethinkdb_data
+2015-03-28T14:43:27.007450000 0.330744s info: Automatically using cache size of 100 MB
+2015-03-28T14:43:27.007481000 0.330775s warn: Cache size does not leave much memory for server and query overhead (available memory: 181 MB).
+2015-03-28T14:43:27.007494000 0.330787s warn: Cache size is very low and may impact performance.
+2015-03-28T14:43:27.008404000 0.331698s error: Could not bind to cluster port: The address at localhost:29015 is reserved or already in use.

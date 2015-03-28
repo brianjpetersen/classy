@@ -3,9 +3,11 @@ import os
 import datetime
 import json
 import glob
+import base64
 # third party libraries
 import rethinkdb
 import delorean
+import passlib.hash
 # first party libraries
 import classy
 import tiny_id
@@ -24,16 +26,36 @@ class Transmissions(RethinkDBController):
 
     def before_handler_called(self):
         super(Transmissions, self).before_handler_called()
+        # setup rethinkdb
         database = self.database = rethinkdb.db('test')
         try:
             database.table_create('transmissions').run(self.connection)
         except:
+            # table already exists
             pass
         finally:
             table = self.table = database.table('transmissions')
+        # basic authentication
+        hashed_passwords_by_username = {'sigmatron-manufacturing':   '$5$rounds=110000$HbOdkzprjm5OvVyl$/jsD1OOlx6AoMglfBeSqDZdhIMImAanMhyrO7czNBw9',
+                                        'podimetrics-manufacturing': '$5$rounds=110000$P9P2gjDmtibD3ss6$zbNCE7fp84iy1JmFAicrVTXbxMS8EiVwPap0i82n1l/'}
+        def generate_auth_failure():
+            self.response.headers['WWW-Authenticate'] = 'Basic realm="transmissions"'
+            raise classy.exceptions.HTTPUnauthorized
+        authorization = self.request.authorization
+        if authorization is None:
+            generate_auth_failure()
+        try:
+            authorization_type, authorization_data = authorization
+            if authorization_type.lower() != 'basic':
+                generate_auth_failure()
+            username, password = base64.b64decode(authorization_data).split(':')
+            if not passlib.hash.sha256_crypt.verify(password, hashed_passwords_by_username[username]):
+                generate_auth_failure()
+        except:
+            generate_auth_failure()
 
-    def delete(self, scan_id=None):
-        if scan_id is None:
+    def delete(self, transmission_id=None):
+        if transmission_id is None:
             try:
                 self.table.delete().run(self.connection)
                 filenames = [path for path in glob.glob('data/*') if os.path.isfile(path)]
@@ -41,15 +63,15 @@ class Transmissions(RethinkDBController):
                     os.remove(filename)
             except:
                 raise classy.exceptions.HTTPNotFound
-        elif scan_id != 'rethinkdb_data':
+        elif transmission_id != 'rethinkdb_data':
             try:
-                self.table.get(scan_id).delete().run(self.connection)
-                os.remove(os.path.join('data', scan_id))
+                self.table.get(transmission_id).delete().run(self.connection)
+                os.remove(os.path.join('data', transmission_id))
             except:
                 raise classy.exceptions.HTTPNotFound
 
-    def get(self, scan_id=None):
-        if scan_id is None:
+    def get(self, transmission_id=None):
+        if transmission_id is None:
             raw_after = self.request.params.get('after', datetime.datetime.min.isoformat())
             raw_before = self.request.params.get('before', datetime.datetime.max.isoformat())
             limit = self.request.params.get('limit', None)
@@ -60,7 +82,7 @@ class Transmissions(RethinkDBController):
             when_received = rethinkdb.row['when_received']
             scans_between = when_received.during(after_datetime, before_datetime)
             pluck_function = lambda transmission: {'when': transmission['when_received'].to_iso8601(), 
-                                                   'scan_id': transmission['id']}
+                                                   'transmission_id': transmission['id']}
             descending_date_order = rethinkdb.desc('when_received')
             query = self.table.filter(scans_between).order_by(descending_date_order).map(pluck_function)
             try:
@@ -74,7 +96,7 @@ class Transmissions(RethinkDBController):
             return json.dumps(list(results))
         else:
             try:
-                with open(os.path.join(DATA_PATH, scan_id), 'rb') as f:
+                with open(os.path.join(DATA_PATH, transmission_id), 'rb') as f:
                     raw_transmission = f.read()
             except IOError:
                 raise classy.exceptions.HTTPNotFound

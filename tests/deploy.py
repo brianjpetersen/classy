@@ -8,7 +8,7 @@ import secrets
 
 if __name__ == '__main__':
 
-    host = '52.4.65.216'
+    host = '52.4.195.176'
     certificate_filename = secrets.certificate_filenames.aws.development
     instance = devploy.deploy.Instance(host, 'ubuntu', certificate_filename, verbose=True)
     print
@@ -27,10 +27,11 @@ if __name__ == '__main__':
     instance.pip_install('delorean')
     instance.pip_install('webob')
     instance.pip_install('waitress')
+    instance.pip_install('passlib')
     instance.run('mkdir ~/podimetrics')
-    instance.set_permissions('~/podimetrics')
     # xvdb for m3, xvdh for t2
-    instance.mount_drive('/dev/xvdh', 'ext4', '~/podimetrics')
+    instance.mount_drive('/dev/xvdh', '~/podimetrics', 'ext4')
+    instance.set_permissions('~/podimetrics')
     instance.cd('~/podimetrics')
     instance.apt_get('git')
     instance.git_clone('https://github.com/brianjpetersen/classy.git')

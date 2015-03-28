@@ -1,5 +1,5 @@
 # standard libraries
-pass
+import traceback
 # third party libraries
 import webob
 # first party libraries
@@ -29,10 +29,9 @@ class Application(object):
             instance.before_response_returned()
         except exceptions.HTTPException, http_exception:
             response = http_exception
-            print exception
         except Exception, exception:
-            response = HTTPInternalServerError
-            print exception
+            response = exceptions.HTTPInternalServerError(exception)
+            print traceback.format_exc()
         finally:
             return response(environ, start_response)
 
