@@ -28,7 +28,8 @@ if __name__ == '__main__':
     instance.pip_install('webob')
     instance.pip_install('waitress')
     instance.run('mkdir ~/podimetrics')
-    instance.mount_drive('/dev/xvdh', 'ext4', '~/podimetrics')
+    # xvdb for m3, xvdh for t2
+    instance.mount_drive('/dev/xvdb', 'ext4', '~/podimetrics')
     instance.set_permissions('~/podimetrics')
     instance.cd('~/podimetrics')
     instance.apt_get('git')
@@ -39,7 +40,7 @@ if __name__ == '__main__':
     instance.cd('../')
     instance.cd('classy')
     instance.pip_install()
-    instance.cd('test')
+    instance.cd('tests')
     instance.run('mkdir data')
     instance.cd('data')
     instance.spawn('rethinkdb --bind all --http-port 8081')
