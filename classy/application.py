@@ -17,8 +17,7 @@ class Application(object):
         #
         url = request.path
         method = request.method.lower()
-        if True:
-        #try:
+        try:
             # find appropriate handler
             controller, args, kwargs = routing.match(self.routes, url, method)
             if controller is None:
@@ -28,7 +27,6 @@ class Application(object):
             instance.before_handler_called()
             response.body = handler(*args, **kwargs) or ''
             instance.before_response_returned()
-            """
         except exceptions.HTTPException, http_exception:
             response = http_exception
             print exception
@@ -36,7 +34,6 @@ class Application(object):
             response = HTTPInternalServerError
             print exception
         finally:
-            """
             return response(environ, start_response)
 
     def add_route(self, route, controller):

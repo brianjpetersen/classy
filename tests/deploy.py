@@ -8,7 +8,7 @@ import secrets
 
 if __name__ == '__main__':
 
-    host = '52.4.55.111'
+    host = '52.4.65.216'
     certificate_filename = secrets.certificate_filenames.aws.development
     instance = devploy.deploy.Instance(host, 'ubuntu', certificate_filename, verbose=True)
     print
@@ -28,9 +28,9 @@ if __name__ == '__main__':
     instance.pip_install('webob')
     instance.pip_install('waitress')
     instance.run('mkdir ~/podimetrics')
-    # xvdb for m3, xvdh for t2
-    instance.mount_drive('/dev/xvdb', 'ext4', '~/podimetrics')
     instance.set_permissions('~/podimetrics')
+    # xvdb for m3, xvdh for t2
+    instance.mount_drive('/dev/xvdh', 'ext4', '~/podimetrics')
     instance.cd('~/podimetrics')
     instance.apt_get('git')
     instance.git_clone('https://github.com/brianjpetersen/classy.git')
@@ -43,6 +43,7 @@ if __name__ == '__main__':
     instance.cd('tests')
     instance.run('mkdir data')
     instance.cd('data')
-    instance.spawn('rethinkdb --bind all --http-port 8081')
+    log_file = '~/podimetrics/classy/tests/data/rethinkdb_data/rethinkdb.log'
+    instance.spawn('rethinkdb --bind all --http-port 8081 --log-file {}'.format(log_file))
     instance.cd('../')
     instance.spawn_python('test_device_layer.py')

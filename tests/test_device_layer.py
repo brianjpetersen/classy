@@ -2,6 +2,7 @@
 import os
 import datetime
 import json
+import glob
 # third party libraries
 import rethinkdb
 import delorean
@@ -30,6 +31,22 @@ class Transmissions(RethinkDBController):
             pass
         finally:
             table = self.table = database.table('transmissions')
+
+    def delete(self, scan_id=None):
+        if scan_id is None:
+            try:
+                self.table.delete().run(self.connection)
+                filenames = [path for path in glob.glob('data/*') if os.path.isfile(path)]
+                for filename in filenames:
+                    os.remove(filename)
+            except:
+                raise classy.exceptions.HTTPNotFound
+        elif scan_id != 'rethinkdb_data':
+            try:
+                self.table.get(scan_id).delete().run(self.connection)
+                os.remove(os.path.join('data', scan_id))
+            except:
+                raise classy.exceptions.HTTPNotFound
 
     def get(self, scan_id=None):
         if scan_id is None:
