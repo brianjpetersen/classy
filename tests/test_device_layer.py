@@ -125,4 +125,4 @@ app.add_route('/', Root)
 
 if __name__ == '__main__':
 
-    classy.serve(host='0.0.0.0',port=8080)
+    classy.serve(host='0.0.0.0',port=80)
