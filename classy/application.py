@@ -27,6 +27,7 @@ class Application(object):
             instance.before_handler_called()
             response.body = handler(*args, **kwargs) or ''
             instance.before_response_returned()
+            del instance
         except exceptions.HTTPException, http_exception:
             response = http_exception
         except Exception, exception:

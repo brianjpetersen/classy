@@ -3,7 +3,6 @@ import os
 import datetime
 import json
 import glob
-import base64
 # third party libraries
 import rethinkdb
 import delorean
@@ -13,47 +12,39 @@ import classy
 import tiny_id
 
 DATA_PATH = 'data'
+HASHED_PASSWORDS_BY_USERNAME = {'sigmatron-manufacturing':   '$5$rounds=110000$HbOdkzprjm5OvVyl$/jsD1OOlx6AoMglfBeSqDZdhIMImAanMhyrO7czNBw9',
+                                'podimetrics-manufacturing': '$5$rounds=110000$P9P2gjDmtibD3ss6$zbNCE7fp84iy1JmFAicrVTXbxMS8EiVwPap0i82n1l/'}
 
 class RethinkDBController(classy.Controller):
 
-    def before_handler_called(self):
+    def __init__(self, *args, **kwargs):
+        super(RethinkDBController, self).__init__(*args, **kwargs)
         self.connection = rethinkdb.connect()
+        self.database = rethinkdb.db('test')
 
     def before_response_returned(self):
         self.connection.close()
 
+def authenticate(username, password):
+    try:
+        return passlib.hash.sha256_crypt.verify(password, HASHED_PASSWORDS_BY_USERNAME[username])
+    except:
+        return False
+
 class Transmissions(RethinkDBController):
 
-    def before_handler_called(self):
-        super(Transmissions, self).before_handler_called()
-        # setup rethinkdb
-        database = self.database = rethinkdb.db('test')
+    def __init__(self, *args, **kwargs):
+        super(Transmissions, self).__init__(*args, **kwargs)
+        # setup rethinkdb table if it doesn't exist
         try:
-            database.table_create('transmissions').run(self.connection)
+            self.database.table_create('transmissions').run(self.connection)
         except:
             # table already exists
             pass
         finally:
-            table = self.table = database.table('transmissions')
-        # basic authentication
-        hashed_passwords_by_username = {'sigmatron-manufacturing':   '$5$rounds=110000$HbOdkzprjm5OvVyl$/jsD1OOlx6AoMglfBeSqDZdhIMImAanMhyrO7czNBw9',
-                                        'podimetrics-manufacturing': '$5$rounds=110000$P9P2gjDmtibD3ss6$zbNCE7fp84iy1JmFAicrVTXbxMS8EiVwPap0i82n1l/'}
-        def generate_auth_failure():
-            self.response.headers['WWW-Authenticate'] = 'Basic realm="transmissions"'
-            raise classy.exceptions.HTTPUnauthorized
-        authorization = self.request.authorization
-        if authorization is None:
-            generate_auth_failure()
-        try:
-            authorization_type, authorization_data = authorization
-            if authorization_type.lower() != 'basic':
-                generate_auth_failure()
-            username, password = base64.b64decode(authorization_data).split(':')
-            if not passlib.hash.sha256_crypt.verify(password, hashed_passwords_by_username[username]):
-                generate_auth_failure()
-        except:
-            generate_auth_failure()
+            table = self.table = self.database.table('transmissions')
 
+    @classy.authentication.Basic(authenticate)
     def delete(self, transmission_id=None):
         if transmission_id is None:
             try:
@@ -70,6 +61,7 @@ class Transmissions(RethinkDBController):
             except:
                 raise classy.exceptions.HTTPNotFound
 
+    @classy.authentication.Basic(authenticate)
     def get(self, transmission_id=None):
         if transmission_id is None:
             raw_after = self.request.params.get('after', datetime.datetime.min.isoformat())
@@ -81,10 +73,10 @@ class Transmissions(RethinkDBController):
             # compose query
             when_received = rethinkdb.row['when_received']
             scans_between = when_received.during(after_datetime, before_datetime)
-            pluck_function = lambda transmission: {'when': transmission['when_received'].to_iso8601(), 
+            plucked_values = lambda transmission: {'when': transmission['when_received'].to_iso8601(), 
                                                    'transmission_id': transmission['id']}
             descending_date_order = rethinkdb.desc('when_received')
-            query = self.table.filter(scans_between).order_by(descending_date_order).map(pluck_function)
+            query = self.table.filter(scans_between).order_by(descending_date_order).map(plucked_values)
             try:
                 limit = int(limit)
                 query = query.limit(limit)

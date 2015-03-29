@@ -7,6 +7,7 @@ import http_exceptions as exceptions
 import routing
 from controllers import Controller
 from application import Application, application, serve
+import authentication
 
 _where = os.path.dirname(os.path.abspath(__file__))
 
