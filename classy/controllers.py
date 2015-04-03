@@ -3,20 +3,19 @@ pass
 # third party libraries
 pass
 # first party libraries
-pass
+import http_exceptions as exceptions
 
 class Controller(object):
     
-    def __init__(self, request, response, **config):
+    __http_methods__ = ('get', 'head', 'put', 'post', 'delete')
+
+    def __init__(self, request, response, **configuration):
         self.request = request
         self.response = response
-        self.config = config
+        self.configuration = configuration
 
-    def before_handler_called(self):
-        pass
-
-    def before_response_returned(self):
-        pass
-
-    def before_error_returned(self):
-        pass
+    def __getattr__(self, name):
+        if name in self.__http_methods__:
+            raise exceptions.HTTPMethodNotAllowed
+        else:
+            raise exceptions.HTTPForbidden

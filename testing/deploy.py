@@ -41,7 +41,7 @@ if __name__ == '__main__':
     instance.cd('../')
     instance.cd('classy')
     instance.pip_install()
-    instance.cd('tests')
+    instance.cd('testing')
     instance.run('mkdir data')
     instance.cd('data')
     log_file = '~/podimetrics/classy/tests/data/rethinkdb_data/rethinkdb.log'

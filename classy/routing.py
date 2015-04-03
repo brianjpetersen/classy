@@ -8,8 +8,6 @@ pass
 import http_exceptions
 import controllers
 
-valid_methods = set(('get', 'post', 'put', 'patch', 'delete', ))
-
 class UrlSegment(object):
     """ Convenience class that encapsulates logic for fuzzy comparison of path segments and
         facilitates lookup of handlers by replacing invalid URL characters with underscores.

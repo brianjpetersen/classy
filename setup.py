@@ -12,7 +12,7 @@ author_email = 'brianjpetersen@gmail.com'
 
 def load_file(fname, default=None):
     try:
-        with open(fname, 'rb') as f:
+        with open(fname, 'r') as f:
             d = f.read()
     except:
         d = default
@@ -31,6 +31,8 @@ if version is None:
     package_data = {}
 else:
     package_data = {project_name: ['../VERSION', ]}
+
+eol = b'\n'
 
 setuptools.setup(
     name = project_name,
