@@ -51,9 +51,9 @@ class Application(object):
         request = self.request
         response = self.response
         return '{} {} {} {} {}'.format(now, request.client_addr.ljust(15),
-                                        response.status_code,
-                                        request.method,
-                                        request.path)
+                                       response.status_code,
+                                       request.method,
+                                       request.path)
 
     def format_err(self, err):
         sep = 20*'='
@@ -66,6 +66,8 @@ class Application(object):
 
             def view(self, handler_return):
                 self.response.content_type = 'image/x-icon'
+
+            put = utilities._raise_method_not_allowed
 
         self.add_route('/favicon.ico', FavIcon)
 

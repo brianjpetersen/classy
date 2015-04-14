@@ -169,9 +169,10 @@ def _match_controller(controller, url, http_method,
                                              controllers.Controller)
         if attribute_is_controller:
             potential_controller = url_attribute
-            branched_matches = _match_controller(
-                potential_controller, url[1:], http_method,
-                (previously_matched_depth + 1), previously_matched_arguments)
+            branched_matches = _match_controller(potential_controller, 
+                                                 url[1:], http_method,
+                                                 (previously_matched_depth + 1), 
+                                                 previously_matched_arguments)
             matches.extend(branched_matches)
     # does controller have a method matching the HTTP method?
     # if so, extract method signature details and attempt to match the URL
@@ -190,8 +191,8 @@ def _match_controller(controller, url, http_method,
             # and deleting it from the returned bound arguments
             positional_arguments = ['self', ]
             positional_arguments.extend([str(u) for u in url])
-            bound_arguments = method_signature.bind(
-                *positional_arguments, **previously_matched_arguments)
+            bound_arguments = method_signature.bind(*positional_arguments, 
+                                                    **previously_matched_arguments)
             # if we delete self, the returned bound arguments no longer match the
             # signature, and all positional arguments are defined in kwargs;
             # any wildcard positional arguments are also explicitly defined as 
@@ -209,8 +210,7 @@ def _match_controller(controller, url, http_method,
                                                    argument.VAR_POSITIONAL)
                 argument_is_bound = (argument.name in bound_arguments.arguments)
                 if argument_is_bound and argument_is_wildcard_positional:
-                    unmatched_wildcard_arguments = len(
-                        bound_arguments.kwargs[argument.name])
+                    unmatched_wildcard_arguments = len(bound_arguments.kwargs[argument.name])
                     break
             matches.append((previously_matched_depth,
                             unmatched_wildcard_arguments, controller,

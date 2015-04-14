@@ -7,9 +7,14 @@ class ImportAntigravity(classy.static.FileController):
 
     filename = os.path.join(_where, 'python.png')
 
+class MontyPython(classy.static.DirectoryController):
+
+    path = os.path.join(_where, 'static')
+
 class Root(classy.controllers.Controller):
 
     anti_gravity = ImportAntigravity
+    monty_python = MontyPython
 
     def get(self):
         return 'Sampling everything in the medicine cabinet!'
