@@ -1,11 +1,15 @@
 # standard libraries
 import traceback
+import datetime
 import logging
 # third party libraries
 import webob
 import waitress
 # first party libraries
 from . import (routing, utilities, exceptions, static)
+
+logger = logging.getLogger('classy')
+logger.setLevel(logging.INFO)
 
 class Application(object):
 
@@ -14,8 +18,8 @@ class Application(object):
 
     def __call__(self, environ, start_response):
         try:
-            request = webob.Request(environ)
-            response = webob.Response()
+            request = self.request = webob.Request(environ)
+            response = self.response = webob.Response()
             # extract relevant details from request
             url = request.path
             method = request.method.lower()
@@ -27,11 +31,12 @@ class Application(object):
             handler = getattr(controller, method)
             handler_return = handler(**kwargs)
             controller.view(handler_return)
+            logger.info(self.format_log())
         except exceptions.HTTPException as http_exception:
             response = utilities.copy_headers(response, http_exception)
+            logger.warning(self.format_log())
         except Exception as exception:
-            # logging.error
-            print(traceback.format_exc())
+            logger.error(self.format_err(traceback.format_exc()))
             http_exception = exceptions.HTTPInternalServerError()
             response = utilities.copy_headers(response, http_exception)
         finally:
@@ -41,10 +46,22 @@ class Application(object):
         route = utilities.Url(route)
         self.routes[route] = Controller
 
-    def add_favicon(self, path):
+    def format_log(self):
+        now = datetime.datetime.utcnow().isoformat()[:23]
+        request = self.request
+        response = self.response
+        return '{} {} {} {} {}'.format(now, request.client_addr.ljust(15),
+                                        response.status_code,
+                                        request.method,
+                                        request.path)
 
+    def format_err(self, err):
+        sep = 20*'='
+        return '\n{}\n{}\n\n{}{}'.format(sep, self.format_log(), err, sep)
+
+    def add_favicon(self, path):
         class FavIcon(static.FileController):
-        
+
             filename = path
 
             def view(self, handler_return):
@@ -52,9 +69,9 @@ class Application(object):
 
         self.add_route('/favicon.ico', FavIcon)
 
+
 app = application = Application()
 
-def serve(host='127.0.0.1', port=8080, app=application, log_level=logging.INFO):
-    logger = logging.getLogger('waitress')
-    logger.setLevel(log_level)
+
+def serve(host='127.0.0.1', port=8080, app=application):
     waitress.serve(app, host=host, port=port)

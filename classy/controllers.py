@@ -5,8 +5,8 @@ pass
 # first party libraries
 from . import utilities
 
-class Controller(object):
 
+class Controller(object):
     def __init__(self, request, response, **configuration):
         self.request = request
         self.response = response

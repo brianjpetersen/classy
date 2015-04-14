@@ -5,17 +5,21 @@ pass
 # first party libraries
 from . import exceptions
 
+
 def _raise_method_not_allowed(self, *args, **kwargs):
     raise exceptions.HTTPMethodNotAllowed
+
 
 def copy_headers(source, destination):
     source_headers = source.headers.copy()
     destination.headers.update(source_headers)
     return destination
 
+
 class UrlSegment(object):
-    """ Convenience class that encapsulates logic for fuzzy comparison of path segments and
-        facilitates lookup of handlers by replacing invalid URL characters with underscores.
+    """ Convenience class that encapsulates logic for fuzzy comparison of 
+        path segments and facilitates lookup of handlers by replacing invalid
+        URL characters with underscores.
 
         >>> UrlSegment('patient-id') == UrlSegment('patient_id')
         True
@@ -23,6 +27,7 @@ class UrlSegment(object):
         True
 
     """
+
     def __init__(self, segment):
         self.segment = segment
         self.normalized = segment.replace('-', '_').replace('.', '_')
@@ -36,9 +41,11 @@ class UrlSegment(object):
     def __repr__(self):
         return "UrlPathSegment('{}')".format(self.segment)
 
+
 class Url(collections.MutableSequence):
-    """ Supports URL path traversal and comparison.  This doesn't necessarily accurately reflect 
-        absolute paths (ie, '/a/b/c' and 'a/b/c' are equivalent).
+    """ Supports URL path traversal and comparison.  This doesn't 
+        necessarily accurately reflect absolute paths 
+        (ie, '/a/b/c' and 'a/b/c' are equivalent).
 
         >>> url1 = Url('/a/b/c')
         >>> url2 = Url('/a')
@@ -54,15 +61,18 @@ class Url(collections.MutableSequence):
         False
 
     """
+
     def __init__(self, url):
         # may want to change this to a deque for efficiencies sake
         self.url_segments = [UrlSegment(u) for u in url.split('/') if u != '']
-    
+
     def starts_with(self, other):
         if len(other) > len(self):
             return False
         else:
-            return all([s == o for s, o in zip(self.url_segments, other.url_segments)])
+            return all([s == o
+                        for s, o in zip(self.url_segments, other.url_segments)
+                        ])
 
     def _get_url(self):
         return '/'.join(map(str, self.url_segments))
