@@ -4,7 +4,7 @@ import base64
 # third party libraries
 pass
 # first party libraries
-import classy.http_exceptions as exceptions
+from .. import exceptions
 
 class Basic(object):
     

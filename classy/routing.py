@@ -3,229 +3,321 @@ import inspect
 import collections
 import copy
 # third party libraries
-pass
+import webob
 # first party libraries
-import http_exceptions
-import controllers
+from . import exceptions
+from . import controllers
+from . import utilities
 
-class UrlSegment(object):
-    """ Convenience class that encapsulates logic for fuzzy comparison of path segments and
-        facilitates lookup of handlers by replacing invalid URL characters with underscores.
+def _match_controller(controller, url, http_method, previously_matched_depth=0, 
+                      previously_matched_arguments=None):
+    """ Attempts a single-pass match of the URL against the controller.
 
-        >>> UrlSegment('patient-id') == UrlSegment('patient_id')
-        True
-        >>> UrlSegment('patient-id').normalized == 'patient_id'
-        True
+        This helper function is intended to be called only from the more general match
+        function defined below and from itself, recursively.  It takes as input a URL
+        (assumed to be a utilities.Url object) and attempts to match this URL against
+        a controller object (which is a subclass of controller.Controller).  
+
+        First, the controller object is introspected to determine if it has an attribute 
+        named http_method.  If it does have an attribute named http_method that is callable,
+        it is a potentially-matching method's and this method's signature is extracted.  If 
+        not, this controller cannot match the URL and an empty list is returned.
+        
+        If the signature of the potentially-matching method matches the entirety of the
+        URL in addition to any additional previously-matched arguments (supplied as input in
+        the previously_matched_arguments dict), then the match is successful.  The format of
+        a match is a tuple with the following elements:
+
+        1. previously_matched_depth: how many controllers have been consumed to construct this
+                                     match?
+        2. unmatched_wildcard_arguments: how many segments of the URL were ultimately matched
+                                         as unnamed args?
+        3. controller: the matching controller that has as an attribute the matching method 
+                       handler
+        4. keyword_arguments: a dict of URL segments that have been matched against the matching  
+                              method handler's signature
+
+        This match object is appended to the matches list which is ultimately returned by this 
+        function.
+
+        After attempting a match on the entirety of the URL, this function then attempts to 
+        incrementally match the URL against branching child controllers; if one is found, the
+        function recurses against the child controller and the unmatched portion of the URL.  For
+        a portion of the URL to match a child controller, the following conditions must be met:
+
+        1. a segment of the URL must be an attribute of the parent controller
+        2. the attribute must be a subclass of controllers.Controller
+        3. the segments of the URL preceding 
+
+        If these three conditions are satisifed, the URL matches the child controller, and this
+        function is called recursively on the unmatched segments of the URL with the following
+        arguments:
+
+        1. controller: the potentially-matching child controller
+        2. url: the portion of the URL that wasn't matched against the method handler siganture
+        3. http_method: unchanged
+        4. previously_matched_depth: incremented by one
+        5. previously_matched_arguments: all arguments matched against the method handler signature
+                                         (including the currently previously_matched_arguments and
+                                          any default arguments to the method handler)
+        
+        The returned values from recursing on these potentially-matching controllers extend the 
+        matches list.
+
+    >>> class People(controllers.Controller):
+    ...
+    ...     def get(self, person_id=None):
+    ...         pass
+    ...
+    >>> matches = _match_controller(People, utilities.Url('/'), http_method='get')
+    >>> matches == [(0, 0, People, {})]
+    True
+    >>> matches = _match_controller(People, utilities.Url('/brianjpetersen'), http_method='get')
+    >>> matches == [(0, 0, People, {'person_id': 'brianjpetersen'})]
+    True
+    >>> matches = _match_controller(People, utilities.Url('/brianjpetersen/settings'), 
+    ...                             http_method='get')
+    >>> matches == []
+    True
+
+
+    >>> class People(controllers.Controller):
+    ...
+    ...     def get(self, person_id, *args, **kwargs):
+    ...         pass
+    ...
+    >>> matches = _match_controller(People, utilities.Url('/'),
+    ...                             http_method='get')
+    >>> matches == []
+    True
+    >>> matches = _match_controller(People, utilities.Url('/brianjpetersen/settings'), 
+    ...                             http_method='get')
+    >>> matches == [(0, 1, People, {'person_id': 'brianjpetersen', 'args': ('settings', )})]
+    True
+
+
+    >>> class Scans(controllers.Controller):
+    ...
+    ...     def get(self, scan_id=None, person_id=None):
+    ...         pass
+    ...
+    >>> class People(controllers.Controller):
+    ...
+    ...     scans = Scans
+    ...     
+    ...     def get(self, person_id, *args, **kwargs):
+    ...         pass
+    ...
+    >>> matches = _match_controller(People, utilities.Url('/brianjpetersen/settings'), 
+    ...                             http_method='get')
+    >>> matches == [(0, 1, People, {'person_id': 'brianjpetersen', 'args': ('settings',)})]
+    True
+    >>> matches = _match_controller(People, utilities.Url('/brianjpetersen/scans'), 
+    ...                             http_method='get')
+    >>> matches == [(0, 1, People, {'person_id': 'brianjpetersen', 'args': ('scans',)}), 
+    ...             (1, 0, Scans,  {'person_id': 'brianjpetersen'})]
+    True
+    >>> matches = _match_controller(People, utilities.Url('/brianjpetersen/scans/12345'), 
+    ...                             http_method='get')
+    >>> matches == [(0, 2, People, {'person_id': 'brianjpetersen', 'args': ('scans', '12345')}), 
+    ...             (1, 0, Scans,  {'person_id': 'brianjpetersen', 'scan_id': '12345'})]
+    True
+    >>> matches = _match_controller(People,
+    ...                             utilities.Url('/brianjpetersen/scans/12345/extra/url/args'),
+    ...                             http_method='get')
+    >>> matches == [(0, 5, People, {'person_id': 'brianjpetersen', 
+    ...                             'args': ('scans', '12345', 'extra', 'url', 'args')})]
+    True
 
     """
-    def __init__(self, segment):
-        self.segment = segment
-        self.normalized = segment.replace('-', '_')
-
-    def __eq__(self, other):
-        return self.normalized == other.normalized
-
-    def __str__(self):
-        return self.segment
-
-    def __repr__(self):
-        return "UrlPathSegment('{}')".format(self.segment)
-
-class Url(collections.MutableSequence):
-    """ Supports URL path traversal and comparison.  This doesn't necessarily accurately reflect 
-        absolute paths (ie, '/a/b/c' and 'a/b/c' are equivalent).
-
-        >>> url1 = Url('/a/b/c')
-        >>> url2 = Url('/a')
-        >>> url3 = Url('/')
-        >>> url4 = Url('/d')
-        >>> url1.starts_with(url2)
-        True
-        >>> url2.starts_with(url1)
-        False
-        >>> url2.starts_with(url3)
-        True
-        >>> url2.starts_with(url4)
-        False
-
-    """
-    def __init__(self, url):
-        # may want to change this to a deque for efficiencies sake
-        self.url_segments = map(UrlSegment, [u for u in url.split('/') if u <> ''])
-    
-    def starts_with(self, other):
-        if len(other) > len(self):
-            return False
-        else:
-            return all([s == o for s, o in zip(self.url_segments, other.url_segments)])
-
-    def _get_url(self):
-        return '/'.join(map(str, self.url_segments))
-    url = property(_get_url)
-
-    def insert(self, item, value):
-        self.url_segments.insert(item, value)
-
-    def __delitem__(self, item):
-        del self.url_segments[item]
-
-    def __setitem__(self, item):
-        pass
-
-    def __getitem__(self, item):
-        if isinstance(item, slice):
-            return Url('/'.join(map(str, self.url_segments[item])))
-        else:
-            return self.url_segments[item]
-
-    def __len__(self):
-        return len(self.url_segments)
-
-    def __str__(self):
-        return self.url
-
-    def __repr__(self):
-        return "Url('{}')".format(self.url)
-
-def _match_controller(controller, url, method, match_depth=0, previously_matched_arguments=None):
-    if previously_matched_arguments is None:
-        previously_matched_arguments = {}
-    # 
-    matches = []
-    # attempt to match controller
-    if len(url) > 0:
-        url_segment = url[0]
-        potential_controller = getattr(controller, str(url_segment), type(None))
-        if issubclass(potential_controller, controllers.Controller):
-            controller = potential_controller
-            match_depth += 1
-            match = _match_method_handler(controller, url[1:], method, match_depth, 
-                                          previously_matched_arguments.copy())
-            matches.extend(match)
-            match = _match_controller(controller, url[1:], method, match_depth, 
-                                      previously_matched_arguments.copy())
-            matches.extend(match)
-    return matches
-
-def _match_method_handler(controller, url, method, match_depth=0, previously_matched_arguments=None):
     # pre-process arguments
     if previously_matched_arguments is None:
         previously_matched_arguments = {}
-    # attempt to match method handler
+    # define return list
     matches = []
-    potential_method_handler = getattr(controller, method, None)
-    valid_method_handler_exists = callable(potential_method_handler) and (method in valid_methods)
-    if valid_method_handler_exists:
-        # retrieve specifics on method handler signature
-        method_signature = inspect.getargspec(potential_method_handler)
-        accepts_args = method_signature.varargs is not None
-        accepts_kwargs = method_signature.keywords is not None
-        arguments = method_signature.args
-        defaults = method_signature.defaults
-        # nb: the if statement is necessary to avoid arguments_without_defaults being empty when
-        #     len(defaults) is zero (ie, arguments[1:-len(defaults)] = arguments[1:-0] = [])
-        if defaults is None:
-            arguments_without_defaults = arguments[1:]
-            arguments_with_defaults = []
-        else:
-            arguments_without_defaults = arguments[1:-len(defaults)]
-            arguments_with_defaults = arguments[-len(defaults):]
-        # is this method handler is consistent with previously matched arguments?
-        accepts_previously_matched_arguments = all(arg in arguments_with_defaults
-                                                   for arg in previously_matched_arguments)
-        if accepts_previously_matched_arguments or accepts_kwargs:
-            # is it possible for the URL to match all arguments without defaults?
-            all_arguments_without_defaults_matched = len(url) >= len(arguments_without_defaults)
-            if all_arguments_without_defaults_matched:
-                # match the URL segments to arguments without defaults
-                matched_kwargs = previously_matched_arguments.copy()
-                for argument in arguments_without_defaults:
-                    matched_kwargs[argument] = str(url.pop(0))
-                # attempt to match either the next controller branch attribute or
-                # consume arguments until
-                matched_args = []
-                for url_position, url_segment in enumerate(url):
-                    match = _match_controller(controller, url[url_position:], method, 
-                                              match_depth, matched_kwargs.copy())
-                    matches.extend(match)
-                    if len(arguments_with_defaults) > 0:
-                        matched_kwargs[arguments_with_defaults.pop(0)] = str(url_segment)
-                    elif accepts_args:
-                        matched_args.extend(map(str, url[url_position:]))
-                        break
-                    else:
+    # does the supplied controller have a child (which is a subclass of controllers.Controller) 
+    # that matches the first element of the URL?
+    # if so, recurse
+    url_has_depth = len(url) > 0
+    if url_has_depth:
+        url_segment = url[0]
+        url_attribute = getattr(controller, url_segment.normalized, type(None))
+        attribute_is_controller = issubclass(url_attribute, controllers.Controller)
+        if attribute_is_controller:
+            potential_controller = url_attribute
+            branched_matches = _match_controller(potential_controller, url[1:], http_method, 
+                                                 (previously_matched_depth + 1),
+                                                 previously_matched_arguments)
+            matches.extend(branched_matches)
+    # does controller have a method matching the HTTP method?
+    # if so, extract method signature details and attempt to match the URL against the method
+    handler = getattr(controller, http_method, None)
+    handler_is_method = callable(handler)
+    if handler_is_method:
+        method_handler = handler
+        # extract method signature details
+        method_signature = inspect.signature(method_handler)
+        # attempt to match the the entirety of the URL against the method handler's
+        # signature
+        try:
+            # skipping the first method argument, which is self and is
+            # implicitly matched to the controller class; adding it here
+            # and deleting it from the returned bound arguments
+            positional_arguments = ['self', ]
+            positional_arguments.extend([str(u) for u in url])
+            bound_arguments = method_signature.bind(*positional_arguments, 
+                                                    **previously_matched_arguments)
+            # if we delete self, the returned bound arguments no longer match the
+            # signature, and all positional arguments are defined in kwargs;
+            # any wildcard positional arguments are also explicitly defined as a kwarg
+            # for example, foo(a, *args) evaluated as foo(1, 2, 3) yields 
+            # kwargs={'a': 1, 'args': (2, 3)}
+            del bound_arguments.arguments['self']
+            # we seek first to maximize the match depth, then to minimize the number of
+            # unmatched wildcard arguments.  at this stage of the matching process, the 
+            # match depth is the same as the controller passed as input to this function
+            unmatched_wildcard_arguments = 0
+            for argument in bound_arguments.signature.parameters.values():
+                argument_is_wildcard_positional = (argument.kind == argument.VAR_POSITIONAL)
+                argument_is_bound = (argument.name in bound_arguments.arguments)
+                if argument_is_bound and argument_is_wildcard_positional:
+                    unmatched_wildcard_arguments = len(bound_arguments.kwargs[argument.name])
+                    break
+            matches.append((previously_matched_depth, unmatched_wildcard_arguments, controller, 
+                           bound_arguments.kwargs))
+        except TypeError:
+            pass
+        # incrementally attempt to match the URL against controller attributes
+        for url_position, url_segment in enumerate(url):
+            url_attribute = getattr(controller, url_segment.normalized, type(None))
+            attribute_is_controller = issubclass(url_attribute, controllers.Controller)
+            if attribute_is_controller:
+                # if the url up to this controller match also matches the method signature
+                # branch and recurse
+                potential_controller = url_attribute
+                # see comments above related to skipping the first method argument
+                # and how deleting self after the match results in all arguments
+                # (even wildcard positionals) being defined as kwargs
+                positional_arguments = ['self', ]
+                positional_arguments.extend([str(u) for u in url[:url_position]])
+                try:
+                    bound_arguments = method_signature.bind(*positional_arguments, 
+                                                            **previously_matched_arguments)
+                except TypeError:
+                    continue
+                del bound_arguments.arguments['self']
+                # extract relevant data so previously_matched_arguments can be correctly
+                # set for the next branch
+                for argument in bound_arguments.signature.parameters.values():
+                    # bound_arguments doesn't include default arguments, but we need to 
+                    # pass them as previously_matched_arguments when we recurse and branch
+                    argument_not_bound = (argument.name not in bound_arguments.arguments)
+                    argument_has_default = (argument.default is not argument.empty)
+                    if argument_not_bound and argument_has_default:
+                        bound_arguments.arguments[argument.name] = argument.default
+                    # if any wildcard positional arguments have been matched, then this
+                    # controller is actually not a potential match because it is ambiguous
+                    # how the URL segments consumed to fill *args should be marshalled to the
+                    # next potential handler as previously_matched_arguments
+                    # because once *args has been bound, binding adding additional arguments 
+                    # to the cannot cause it to be unbound, we are able to break out at this
+                    # point
+                    argument_is_wildcard_positional = (argument.kind == argument.VAR_POSITIONAL)
+                    argument_is_bound = (argument.name in bound_arguments.arguments)
+                    if argument_is_bound and argument_is_wildcard_positional:
                         return matches
-                # normalize matched_kwargs and matched_args so that the kwargs that are actually
-                # positional arguments 
-                matches.append((match_depth, controller, matched_args, matched_kwargs))
-                # for argument, default in zip(arguments, defaults):
-                #     
-                #matches.append((match_depth, controller, args, kwargs))
-                #matches.append((match_depth, controller, [], {}))
+                newly_matched_arguments = previously_matched_arguments.copy()
+                newly_matched_arguments.update(bound_arguments.kwargs)
+                # add arguments with defaults to previously_matched_arguments
+                branched_matches = _match_controller(potential_controller, 
+                                                     url[(url_position + 1):], 
+                                                     http_method, (previously_matched_depth + 1),
+                                                     newly_matched_arguments)
+                matches.extend(branched_matches)
     return matches
 
-def match(controller_routes, url, method):
+def _extract_matches_sort_invariant(match):
+    """ Given a match object (see _match_controller above), return a key that when sorted on
+        results in a list of match objects being sorted on fitness.
+
+        Note, we want to first maximize match_depth, and then minimize the number of unmatched
+        wildcard arguments.  Ties should be broken by the order in which the routes were added
+        and the controllers processed, so the sorting algorithm ought to be stable.
+    """
+    matched_depth, unmatched_wildcard_arguments, _, _ = match
+    return (matched_depth, -unmatched_wildcard_arguments)
+
+
+def match(routes, url, method):
+    """ Returns the best matching controller (and matched arguments to the handler 
+        method) to the supplied URL.
+
+    >>> class Scans(controllers.Controller):
+    ...
+    ...     def get(self, scan_id=None, person_id=None):
+    ...         pass
+    ...
+    >>> class People(controllers.Controller):
+    ...
+    ...     scans = Scans
+    ...     
+    ...     def get(self, person_id, *args, **kwargs):
+    ...         pass
+    ...
+    >>> routes = {'/people': People, '/scans': Scans}
+    >>> Controller, kwargs = match(routes, '/', 'GET')
+    >>> (Controller, kwargs) == (None, {})
+    True
+    >>> Controller, kwargs = match(routes, '/people/brianjpetersen', 'GET')
+    >>> (Controller, kwargs) == (People, {'person_id': 'brianjpetersen'})
+    True
+    >>> Controller, kwargs = match(routes, '/people/brianjpetersen', 'POST')
+    >>> controller = Controller(None, None)
+    >>> handler = getattr(controller, 'post')
+    >>> try:
+    ...     handler(**kwargs)
+    ... except exceptions.HTTPMethodNotAllowed:
+    ...     print(True)
+    True
+    >>> Controller, kwargs = match(routes, '/people/brianjpetersen/settings', 'GET')
+    >>> (Controller, kwargs) == (People, {'person_id': 'brianjpetersen', 
+    ...                                   'args': ('settings', )})
+    True
+    >>> Controller, kwargs = match(routes, '/people/brianjpetersen/scans', 'GET')
+    >>> (Controller, kwargs) == (Scans, {'person_id': 'brianjpetersen'})
+    True
+    >>> Controller, kwargs = match(routes, '/scans', 'GET')
+    >>> (Controller, kwargs) == (Scans, {})
+    True
+    
+    """
     # pre-process arguments
     method = method.lower()
-    if not isinstance(url, Url):
-        url = Url(url)
-    # search for matches
+    if not isinstance(url, utilities.Url):
+        url = utilities.Url(url)
+    # iterate over the routes dictionary, recursively looking in the parent 
+    # controller for matches
     matches = []
-    for route, controller in controller_routes.iteritems():
-        if not isinstance(route, Url):
-            route = Url(route)
+    for route, controller in routes.items():
+        # because this method is general, we shouldn't assume the URL will come in as 
+        # type utilities.URL; casting here as appropriate
+        if not isinstance(route, utilities.Url):
+            route = utilities.Url(route)
         route_matches_url = url.starts_with(route)
         if route_matches_url:
             match_depth = len(route)
             unmatched_url = url[match_depth:]
-            # attempt matches against the controller and the method handler, if any
-            match = _match_method_handler(controller, unmatched_url, method, match_depth)
-            matches.extend(match)
+            # attempt matches against the root controller
             match = _match_controller(controller, unmatched_url, method, match_depth)
             matches.extend(match)
     if matches:
-        best_match = max(matches)
-        _, controller, args, kwargs = best_match
-        return controller, args, kwargs
+        best_match = max(matches, key=_extract_matches_sort_invariant)
+        _, _, controller, kwargs = best_match
+        return controller, kwargs
     else:
-        return None, [], {}
-
-# TODO: cleanup match_depth
-#       cleanup matched_kwargs and matched_args
-#       use dict instead of list for matches
-#       controller match (if len(url) > 0:) prefix is ugly
-#       not found vs method not allowed
-#       error handling in wsgi app is wonky
+        return None, {}
 
 if __name__ == '__main__':
-
+    
     import doctest
     doctest.testmod()
-
-    class Scans(controllers.Controller):
-
-        def get(self, scan_id, **kwargs):
-            pass
-
-    class Patients(controllers.Controller):
-        
-        scans = Scans
-
-        def get(self, patient_id=None, *args, **kwargs):
-            pass
-
-    class Api(controllers.Controller):
-        
-        scans = Scans
-        patients = Patients
-        
-        def get(self):
-            pass
-
-    import datetime
-    start = datetime.datetime.now()
-    for i in xrange(1):
-        match = match({'/api': Api}, '/api/patients/patient_id/scans/scan_id', 'GET')
-    end = datetime.datetime.now()
-    print (end - start).total_seconds()
-    print match

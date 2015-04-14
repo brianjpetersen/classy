@@ -3,19 +3,23 @@ pass
 # third party libraries
 pass
 # first party libraries
-import http_exceptions as exceptions
+from . import utilities
 
 class Controller(object):
-    
-    __http_methods__ = ('get', 'head', 'put', 'post', 'delete')
 
     def __init__(self, request, response, **configuration):
         self.request = request
         self.response = response
         self.configuration = configuration
 
-    def __getattr__(self, name):
-        if name in self.__http_methods__:
-            raise exceptions.HTTPMethodNotAllowed
-        else:
-            raise exceptions.HTTPForbidden
+    def view(self, handler_return=None):
+        if isinstance(handler_return, str):
+            self.response.text = handler_return
+        elif isinstance(handler_return, bytes):
+            self.response.body = handler_return
+
+    get = utilities._raise_method_not_allowed
+    head = utilities._raise_method_not_allowed
+    put = utilities._raise_method_not_allowed
+    post = utilities._raise_method_not_allowed
+    delete = utilities._raise_method_not_allowed
