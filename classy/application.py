@@ -24,13 +24,14 @@ class Application(object):
             url = request.path
             method = request.method.lower()
             # find appropriate handler
-            Controller, kwargs = routing.match(self.routes, url, method)
+            Controller, args, kwargs = routing.match(self.routes, url, method)
             if Controller is None:
                 raise exceptions.HTTPNotFound
             controller = Controller(request, response, **self.configuration)
             handler = getattr(controller, method)
-            handler_return = handler(**kwargs)
-            controller.view(handler_return)
+            controller.before()
+            handler_return = handler(*args, **kwargs)
+            controller.after(handler_return)
             logger.info(self.format_log())
         except exceptions.HTTPException as http_exception:
             response = utilities.copy_headers(response, http_exception)
@@ -64,8 +65,14 @@ class Application(object):
 
             filename = path
 
-            def view(self, handler_return):
+            def after(self, file_iterator):
                 self.response.content_type = 'image/x-icon'
+                etag_hash = hash((file_iterator.last_modified,
+                                  file_iterator.content_length,
+                                  file_iterator.filename))
+                self.response.etag = str(etag_hash)
+                self.response.conditional_response = True
+                self.response.last_modified = file_iterator.last_modified
 
             put = utilities._raise_method_not_allowed
 

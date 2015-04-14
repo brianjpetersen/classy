@@ -79,12 +79,12 @@ def _match_controller(controller, url, http_method,
     >>> matches = _match_controller(People, 
     ...                             utilities.Url('/'), 
     ...                             http_method='get')
-    >>> matches == [(0, 0, People, {})]
+    >>> matches == [(0, 0, People, (), {})]
     True
     >>> matches = _match_controller(People, 
     ...                             utilities.Url('/brianjpetersen'), 
     ...                             http_method='get')
-    >>> matches == [(0, 0, People, {'person_id': 'brianjpetersen'})]
+    >>> matches == [(0, 0, People, ('brianjpetersen', ), {})]
     True
     >>> matches = _match_controller(People, 
     ...                             utilities.Url('/brianjpetersen/settings'), 
@@ -105,8 +105,7 @@ def _match_controller(controller, url, http_method,
     >>> matches = _match_controller(People, 
     ...                             utilities.Url('/brianjpetersen/settings'), 
     ...                             http_method='get')
-    >>> matches == [(0, 1, People, {'person_id': 'brianjpetersen', 
-    ...                             'args': ('settings', )})]
+    >>> matches == [(0, 1, People, ('brianjpetersen', 'settings'), {})]
     True
 
 
@@ -125,31 +124,26 @@ def _match_controller(controller, url, http_method,
     >>> matches = _match_controller(People, 
     ...                             utilities.Url('/brianjpetersen/settings'), 
     ...                             http_method='get')
-    >>> matches == [(0, 1, People, {'person_id': 'brianjpetersen', 
-    ...                             'args': ('settings',)})]
+    >>> matches == [(0, 1, People, ('brianjpetersen', 'settings', ), {})]
     True
     >>> matches = _match_controller(People, 
     ...                             utilities.Url('/brianjpetersen/scans'), 
     ...                             http_method='get')
-    >>> matches == [(0, 1, People, {'person_id': 'brianjpetersen', 
-    ...                             'args': ('scans',)}), 
-    ...             (1, 0, Scans,  {'person_id': 'brianjpetersen'})]
+    >>> matches == [(0, 1, People, ('brianjpetersen', 'scans'), {}), 
+    ...             (1, 0, Scans,  (), {'person_id': 'brianjpetersen'})]
     True
     >>> matches = _match_controller(People, 
     ...                             utilities.Url('/brianjpetersen/scans/12345'), 
     ...                             http_method='get')
-    >>> matches == [(0, 2, People, {'person_id': 'brianjpetersen', 
-    ...                             'args': ('scans', '12345')}), 
-    ...             (1, 0, Scans,  {'person_id': 'brianjpetersen', 
-    ...                             'scan_id': '12345'})]
+    >>> matches == [(0, 2, People, ('brianjpetersen', 'scans', '12345', ), {}), 
+    ...             (1, 0, Scans,  ('12345', 'brianjpetersen', ), {})]
     True
     >>> _url = '/brianjpetersen/scans/12345/extra/url/args'
     >>> matches = _match_controller(People,
     ...                             utilities.Url(_url),
     ...                             http_method='get')
-    >>> matches == [(0, 5, People, {'person_id': 'brianjpetersen', 
-    ...                             'args': ('scans', '12345', 'extra', 
-    ...                                      'url', 'args')})]
+    >>> matches == [(0, 5, People, ('brianjpetersen', 'scans', '12345', 'extra', 
+    ...                             'url', 'args'), {})]
     True
 
     """
@@ -174,9 +168,8 @@ def _match_controller(controller, url, http_method,
                                                  (previously_matched_depth + 1), 
                                                  previously_matched_arguments)
             matches.extend(branched_matches)
-    # does controller have a method matching the HTTP method?
-    # if so, extract method signature details and attempt to match the URL
-    # against the method
+    # does controller have a method matching the HTTP method? if so, extract method 
+    # signature details and attempt to match the URL against the method
     handler = getattr(controller, http_method, None)
     handler_is_method = callable(handler)
     if handler_is_method:
@@ -199,7 +192,7 @@ def _match_controller(controller, url, http_method,
             # a kwarg
             # for example, foo(a, *args) evaluated as foo(1, 2, 3) yields 
             # kwargs={'a': 1, 'args': (2, 3)}
-            del bound_arguments.arguments['self']
+            ###### del bound_arguments.arguments['self']
             # we seek first to maximize the match depth, then to minimize the 
             # number of unmatched wildcard arguments.  at this stage of the 
             # matching process, the match depth is the same as the controller 
@@ -210,11 +203,11 @@ def _match_controller(controller, url, http_method,
                                                    argument.VAR_POSITIONAL)
                 argument_is_bound = (argument.name in bound_arguments.arguments)
                 if argument_is_bound and argument_is_wildcard_positional:
-                    unmatched_wildcard_arguments = len(bound_arguments.kwargs[argument.name])
+                    unmatched_wildcard_arguments = len(bound_arguments.arguments[argument.name])
                     break
             matches.append((previously_matched_depth,
                             unmatched_wildcard_arguments, controller,
-                            bound_arguments.kwargs))
+                            bound_arguments.args[1:], bound_arguments.kwargs))
         except TypeError:
             pass
         # incrementally attempt to match the URL against controller attributes
@@ -289,7 +282,7 @@ def _extract_matches_sort_invariant(match):
         the order in which the routes were added and the controllers 
         processed, so the sorting algorithm ought to be stable.
     """
-    matched_depth, unmatched_wildcard_arguments, _, _ = match
+    matched_depth, unmatched_wildcard_arguments, _, _, _ = match
     return (matched_depth, -unmatched_wildcard_arguments)
 
 
@@ -310,37 +303,36 @@ def match(routes, url, method):
     ...         pass
     ...
     >>> routes = {'/people': People, '/scans': Scans}
-    >>> Controller, kwargs = match(routes, '/', 'GET')
-    >>> (Controller, kwargs) == (None, {})
+    >>> Controller, args, kwargs = match(routes, '/', 'GET')
+    >>> (Controller, args, kwargs) == (None, (), {})
     True
-    >>> Controller, kwargs = match(routes, 
-    ...                            '/people/brianjpetersen', 
-    ...                            'GET')
-    >>> (Controller, kwargs) == (People, {'person_id': 'brianjpetersen'})
+    >>> Controller, args, kwargs = match(routes, 
+    ...                                  '/people/brianjpetersen', 
+    ...                                  'GET')
+    >>> (Controller, args, kwargs) == (People, ('brianjpetersen', ), {})
     True
-    >>> Controller, kwargs = match(routes, 
-    ...                            '/people/brianjpetersen', 
-    ...                            'POST')
+    >>> Controller, args, kwargs = match(routes, 
+    ...                                  '/people/brianjpetersen', 
+    ...                                  'POST')
     >>> controller = Controller(None, None)
     >>> handler = getattr(controller, 'post')
     >>> try:
-    ...     handler(**kwargs)
+    ...     handler(*args, **kwargs)
     ... except exceptions.HTTPMethodNotAllowed:
     ...     print(True)
     True
-    >>> Controller, kwargs = match(routes, 
-    ...                            '/people/brianjpetersen/settings', 
-    ...                            'GET')
-    >>> (Controller, kwargs) == (People, {'person_id': 'brianjpetersen', 
-    ...                                   'args': ('settings', )})
+    >>> Controller, args, kwargs = match(routes, 
+    ...                                  '/people/brianjpetersen/settings', 
+    ...                                  'GET')
+    >>> (Controller, args, kwargs) == (People, ('brianjpetersen', 'settings'), {})
     True
-    >>> Controller, kwargs = match(routes, 
-    ...                            '/people/brianjpetersen/scans', 
-    ...                            'GET')
-    >>> (Controller, kwargs) == (Scans, {'person_id': 'brianjpetersen'})
+    >>> Controller, args, kwargs = match(routes, 
+    ...                                  '/people/brianjpetersen/scans', 
+    ...                                  'GET')
+    >>> (Controller, args, kwargs) == (Scans, (), {'person_id': 'brianjpetersen'})
     True
-    >>> Controller, kwargs = match(routes, '/scans', 'GET')
-    >>> (Controller, kwargs) == (Scans, {})
+    >>> Controller, args, kwargs = match(routes, '/scans', 'GET')
+    >>> (Controller, args, kwargs) == (Scans, (), {})
     True
     
     """
@@ -366,10 +358,10 @@ def match(routes, url, method):
             matches.extend(match)
     if matches:
         best_match = max(matches, key=_extract_matches_sort_invariant)
-        _, _, controller, kwargs = best_match
-        return controller, kwargs
+        _, _, controller, args, kwargs = best_match
+        return controller, args, kwargs
     else:
-        return None, {}
+        return None, (), {}
 
 
 if __name__ == '__main__':

@@ -17,6 +17,7 @@ mimetypes.add_type('image/x-icon', '.ico')
 
 class FileIterator(object):
     def __init__(self, filename, block_size=65536):
+        self.filename = filename
         self.block_size = block_size
         self.file = open(filename, 'rb')
         self.last_modified = os.path.getmtime(filename)
@@ -79,7 +80,6 @@ class DirectoryController(controllers.Controller):
             relative_path = os.path.join(*path_segments)
         else:
             relative_path = ''
-        print(self.path, relative_path)
         absolute_path = os.path.abspath(os.path.join(self.path, relative_path))
         path_not_subhierarchy = not absolute_path.startswith(self.path)
         if path_not_subhierarchy:

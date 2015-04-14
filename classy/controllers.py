@@ -12,7 +12,10 @@ class Controller(object):
         self.response = response
         self.configuration = configuration
 
-    def view(self, handler_return=None):
+    def before(self):
+        pass
+
+    def after(self, handler_return=None):
         if isinstance(handler_return, str):
             self.response.text = handler_return
         elif isinstance(handler_return, bytes):
