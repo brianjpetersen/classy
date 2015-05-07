@@ -18,6 +18,6 @@ _where = os.path.dirname(os.path.abspath(__file__))
 with open(os.path.join(_where, '..', 'VERSION'), 'rb') as f:
     __version__ = f.read()
 
-__all__ = ['__version__', 'routing', 'utilities', 'exceptions', 'app',
+__all__ = ('__version__', 'routing', 'utilities', 'exceptions', 'app',
            'application', 'Application', 'authentication', 'Controller',
-           'static', 'logger']
+           'static', 'logger')

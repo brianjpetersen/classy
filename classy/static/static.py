@@ -4,8 +4,8 @@ import mimetypes
 # third party libraries
 pass
 # first party libraries
-from .. import controllers
-from .. import exceptions
+from .. import (controllers, exceptions)
+
 
 # do not load mimetypes from Windows registry
 mimetypes._winreg = None
@@ -15,7 +15,8 @@ mimetypes.add_type('text/javascript', '.js')
 mimetypes.add_type('image/x-icon', '.ico')
 
 
-class FileIterator(object):
+class FileIterator:
+    
     def __init__(self, filename, block_size=65536):
         self.filename = filename
         self.block_size = block_size
@@ -38,7 +39,7 @@ class FileController(controllers.Controller):
     filename = ''
 
     def __init__(self, *args, **kwargs):
-        super(FileController, self).__init__(*args, **kwargs)
+        controllers.Controller.__init__(self, *args, **kwargs)
         filename_is_file = os.path.isfile(self.filename)
         if not filename_is_file:
             # TODO: this really ought to be checked at metaclass instantiation
@@ -68,7 +69,7 @@ class DirectoryController(controllers.Controller):
     path = ''
 
     def __init__(self, *args, **kwargs):
-        super(DirectoryController, self).__init__(*args, **kwargs)
+        controllers.Controller.__init__(self, *args, **kwargs)
         path_is_directory = os.path.isdir(self.path)
         if not path_is_directory:
             error_message = 'Path does not exist or is not a \

@@ -16,7 +16,7 @@ def copy_headers(source, destination):
     return destination
 
 
-class UrlSegment(object):
+class UrlSegment:
     """ Convenience class that encapsulates logic for fuzzy comparison of 
         path segments and facilitates lookup of handlers by replacing invalid
         URL characters with underscores.
@@ -63,6 +63,7 @@ class Url(collections.MutableSequence):
     """
 
     def __init__(self, url):
+        super().__init__()
         # may want to change this to a deque for efficiencies sake
         self.url_segments = [UrlSegment(u) for u in url.split('/') if u != '']
 

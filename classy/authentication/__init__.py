@@ -6,7 +6,7 @@ pass
 # first party libraries
 from .. import exceptions
 
-class Basic(object):
+class Basic:
     
     def __init__(self, authenticator, realm=''):
         self.authenticator = authenticator
