@@ -32,45 +32,44 @@ class Application:
             _configure(Controller, self.configuration)
         
     def __call__(self, environ, start_response):
+        request = webob.Request(environ)
+        response = webob.Response()
+        # extract relevant details from request
+        url = request.path
+        method = request.method.lower()
         try:
-            request = webob.Request(environ)
-            response = webob.Response()
-            # extract relevant details from request
-            url = request.path
-            method = request.method.lower()
             # find appropriate handler
             Controller, args, kwargs = routing.match(self.routes, url, method)
-            # Controller will be None if there is no appropriate match
             if Controller is None:
                 raise exceptions.HTTPNotFound
             # Controller configuration should allow this method
             allowed_methods = getattr(Controller, 'allowed_methods', set())
             if method not in allowed_methods:
                 raise exceptions.HTTPMethodNotAllowed
-            # extract appropriate handler an call it (should never fail)
+            # instantiate controller and extract appropriate handler
             controller = Controller(request, response)
             handler = getattr(controller, method)
-            controller.before()
-            returned = handler(*args, **kwargs)
-            controller.after(returned)
-            logger.info(self.format_log(request, response))
+            # execute handler and view
+            try:
+                returned = handler(*args, **kwargs)
+                controller.view(returned)
+            except:
+                raise
+            else:
+                log = self.format_log(request, response)
+                logger.info(log)
         except exceptions.HTTPException as http_exception:
-            response = utilities.copy_headers(response, http_exception)
-            logger.warning(self.format_log(request, response))
+            response = http_exception
+            log = self.format_log(request, response)
+            logger.warning(log)
         except Exception as exception:
             http_exception = exceptions.HTTPInternalServerError
-            response = utilities.copy_headers(response, http_exception)
-            logger.error(self.format_err(traceback.format_exc(), request, 
-                                         response))
+            response = http_exception
+            log = self.format_err(traceback.format_exc(), request, response)
+            logger.error(log)
         finally:
-            try:
-                controller.lastly(response)
-            except:
-                error_message = '\n{}\n\n{}'.format('Exception in lastly.',
-                                                    traceback.format_exc())
-                logger.error(error_message)
-            finally:
-                return response(environ, start_response)
+            controller.response = response
+            return response(environ, start_response)
 
     def add_route(self, route, Controller):
         route = utilities.Url(route)
@@ -78,6 +77,10 @@ class Application:
         
     def add_asset(self, route, path):
         pass
+        
+    def serve(self, *args, **kwargs):
+        self.configure()
+        waitress.serve(self, *args, **kwargs)
 
     def format_log(self, request, response):
         now = datetime.datetime.utcnow().isoformat()[:23]
@@ -91,8 +94,4 @@ class Application:
 
 
 app = application = Application()
-
-
-def serve(port=8080, host='127.0.0.1', threads=10, app=application):
-    application.configure()
-    waitress.serve(app, host=host, port=port)
+serve = app.serve
